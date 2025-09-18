@@ -8,7 +8,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -U pip pyinstaller opencv-python natsort
+      - run: pip install -U pip pyinstaller
+      - run: pip install -r requirements.txt
       - run: pyinstaller --onefile --windowed --name RecortarImgsGUI recortar_imgs_menu.py
       - uses: actions/upload-artifact@v4
         with:

@@ -63,7 +63,7 @@ def start():
 
 root = tk.Tk()
 root.title("Recortar Imágenes - Menú")
-root.geometry("520x380")
+root.geometry("950x380")
 
 in_var = tk.StringVar()
 out_var = tk.StringVar()
@@ -75,19 +75,19 @@ preview_var = tk.IntVar(value=0)
 
 row = 0
 tk.Label(root, text="Carpeta de entrada:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(root, textvariable=in_var, width=48).grid(row=row, column=1, padx=4)
+tk.Entry(root, textvariable=in_var, width=60).grid(row=row, column=1, padx=4)
 tk.Button(root, text="Seleccionar...", command=select_in).grid(row=row, column=2, padx=4); row+=1
 
 tk.Label(root, text="Carpeta de salida:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(root, textvariable=out_var, width=48).grid(row=row, column=1, padx=4)
+tk.Entry(root, textvariable=out_var, width=60).grid(row=row, column=1, padx=4)
 tk.Button(root, text="Seleccionar...", command=select_out).grid(row=row, column=2, padx=4); row+=1
 
 tk.Label(root, text="Imagen de referencia (opcional):").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(root, textvariable=ref_var, width=48).grid(row=row, column=1, padx=4)
+tk.Entry(root, textvariable=ref_var, width=60).grid(row=row, column=1, padx=4)
 tk.Button(root, text="Elegir...", command=select_ref).grid(row=row, column=2, padx=4); row+=1
 
 tk.Label(root, text="Ruta de pesos YOLO (opcional):").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(root, textvariable=weights_var, width=48).grid(row=row, column=1, padx=4)
+tk.Entry(root, textvariable=weights_var, width=60).grid(row=row, column=1, padx=4)
 tk.Button(root, text="Elegir...", command=select_weights).grid(row=row, column=2, padx=4); row+=1
 
 tk.Label(root, text="Escala de vista (0.1–1.0):").grid(row=row, column=0, sticky="w", padx=8, pady=6)
