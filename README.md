@@ -6,6 +6,9 @@ Herramienta para recortar imágenes basándose en áreas definidas manualmente, 
 
 - **Recorte de imágenes**: Define áreas de recorte en una imagen de referencia y aplica los mismos recortes a todas las imágenes de una carpeta
 - **Detección YOLO opcional**: Si se proporciona un modelo YOLO, las imágenes recortadas se clasifican automáticamente según si contienen objetos detectados
+- **Múltiples modelos YOLO**: Sistema avanzado que permite cargar varios modelos y asignarlos a recortes específicos
+- **Vista previa visual**: Miniaturas de recortes para facilitar la selección del modelo apropiado
+- **Asignación intuitiva**: Selecciona modelos basándote en lo que ves en las miniaturas
 - **Visualización de detecciones**: Las imágenes con detecciones muestran bounding boxes y niveles de confianza
 - **Interfaz gráfica**: Menú fácil de usar con tkinter
 - **Organización automática**: Cuando se usa YOLO, las imágenes se organizan en carpetas `con_deteccion` y `sin_deteccion`
@@ -32,7 +35,9 @@ python recortar_imgs_menu.py
 - **Carpeta de entrada**: Carpeta con las imágenes a procesar
 - **Carpeta de salida**: Carpeta donde se guardarán los recortes
 - **Imagen de referencia** (opcional): Imagen para definir las áreas de recorte
-- **Ruta de pesos YOLO** (opcional): Archivo `.pt` o `.onnx` del modelo YOLO
+- **Ruta de pesos YOLO** (opcional): Archivo `.pt` o `.onnx` del modelo YOLO (modo simple)
+- **Configurar Múltiples Modelos**: Botón para cargar varios modelos YOLO
+- **Asignar Modelos a Recortes**: Botón para asignar modelos específicos a cada recorte
 - **Escala de vista**: Factor de escala para la vista previa (0.1-1.0)
 - **Padding**: Píxeles adicionales alrededor de cada recorte
 - **Preview**: Mostrar vista previa de los recortes
@@ -68,12 +73,24 @@ python recortar_imgs.py --in carpeta_entrada --out carpeta_salida [opciones]
 6. Se generan archivos `lista_imagenes.txt` en cada carpeta
 7. Se crea un archivo `resumen_detecciones.txt` con información detallada de todas las detecciones
 
+### Con Múltiples Modelos YOLO (Modo Avanzado)
+1. Selecciona carpeta de entrada y salida
+2. Haz clic en "Configurar Múltiples Modelos"
+3. Agrega varios modelos YOLO con nombres descriptivos
+4. Define áreas de recorte en la imagen de referencia
+5. **NUEVO**: El sistema crea los recortes primero
+6. **NUEVO**: Se abre una ventana con miniaturas de cada tipo de recorte
+7. **NUEVO**: Selecciona qué modelo usar para cada tipo de recorte basándote en las miniaturas
+8. Cada recorte se procesará con su modelo asignado
+9. Los resultados se organizan automáticamente según las detecciones
+
 ## Requisitos
 
 - Python 3.7+
 - OpenCV
 - Ultralytics (para YOLO)
 - natsort
+- Pillow (para miniaturas)
 
 ## Visualización de Detecciones
 

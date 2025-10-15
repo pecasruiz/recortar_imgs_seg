@@ -191,22 +191,37 @@ def select_rois_on(image, scale_view=1.0, win="Define BBoxes"):
                 for x,y,wb,hb in rois]
     return rois
 
-def main(in_dir, out_dir, ref_path=None, pad=0, preview=False, scale_view=0.5, weights_path=None):
+def main(in_dir, out_dir, ref_path=None, pad=0, preview=False, scale_view=0.5, yolo_weights=None):
     imgs = list_images(in_dir)
     if not imgs:
         print("No hay imágenes en la carpeta.")
         return
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    # Cargar modelo YOLO si se proporciona ruta de pesos
-    yolo_model = None
-    if weights_path:
-        print("Cargando modelo YOLO...")
-        yolo_model = load_yolo_model(weights_path)
-        if yolo_model is None:
-            print("No se pudo cargar el modelo YOLO. Continuando sin detección...")
+    # Cargar modelos YOLO si se proporcionan
+    models = []
+    if yolo_weights:
+        print(f"Cargando {len([w for w in yolo_weights if w])} modelos YOLO...")
+        for i, weight_path in enumerate(yolo_weights):
+            if weight_path:
+                print(f"Cargando modelo {i+1} desde: {weight_path}")
+                model = load_yolo_model(weight_path)
+                if model:
+                    models.append(model)
+                    print(f"Modelo {i+1} cargado correctamente")
+                else:
+                    models.append(None)
+                    print(f"Error al cargar modelo {i+1}")
+            else:
+                models.append(None)
+        
+        if any(models):
+            print("Al menos un modelo YOLO cargado correctamente")
+            # Crear carpetas de detección
+            create_detection_folders(out_dir)
         else:
-            print("Modelo YOLO cargado correctamente.")
+            print("Ningún modelo YOLO se pudo cargar. Continuando sin detección.")
+            models = []
 
     ref_img_path = Path(ref_path) if ref_path else imgs[0]
     ref = cv.imread(str(ref_img_path))
@@ -219,14 +234,14 @@ def main(in_dir, out_dir, ref_path=None, pad=0, preview=False, scale_view=0.5, w
         return
     rel_rois = to_rel(rois, rw, rh)
 
-    # Si hay modelo YOLO, crear carpetas de detección
+    # Si hay modelos YOLO, crear carpetas de detección
     con_detection_dir = None
     sin_detection_dir = None
     con_detection_images = []
     sin_detection_images = []
     detection_data = {}  # Para almacenar datos detallados de detecciones
     
-    if yolo_model:
+    if models and any(models):
         con_detection_dir, sin_detection_dir = create_detection_folders(out_dir)
         print("Carpetas de detección creadas: con_deteccion y sin_deteccion")
 
@@ -239,62 +254,42 @@ def main(in_dir, out_dir, ref_path=None, pad=0, preview=False, scale_view=0.5, w
         abs_rois = to_abs(rel_rois, w, h, pad)
 
         saved = 0
-        crop_paths = []  # Para almacenar rutas de recortes si hay YOLO
         
         for j, (x,y,ww,hh) in enumerate(abs_rois, 1):
             if ww<=0 or hh<=0: continue
             crop = img[y:y+hh, x:x+ww]
             out_name = f"{img_path.stem}_bb{j:02d}.png"
+            out_path = Path(out_dir) / out_name
             
-            if yolo_model:
-                # Guardar en carpeta temporal para detección
-                crop_path = Path(out_dir) / out_name
+            # Si hay modelos YOLO, usar el modelo correspondiente al recorte
+            if models and j <= len(models) and models[j-1] is not None:
+                model = models[j-1]
+                crop_path = Path(out_dir) / "temp_crop.png"
                 cv.imwrite(str(crop_path), crop)
-                crop_paths.append(crop_path)
+                
+                detections = detect_objects_yolo(model, str(crop_path))
+                if detections:
+                    # Dibujar detecciones en la imagen
+                    crop_with_boxes = draw_detections(crop, detections, model)
+                    cv.imwrite(str(out_path), crop_with_boxes)
+                    con_detection_images.append(out_name)
+                    detection_data[out_name] = detections
+                    print(f"  -> Recorte {j} con modelo {j}: {len(detections)} detecciones")
+                else:
+                    cv.imwrite(str(out_path), crop)
+                    sin_detection_images.append(out_name)
+                    print(f"  -> Recorte {j} con modelo {j}: Sin detecciones")
+                
+                # Limpiar archivo temporal
+                crop_path.unlink()
             else:
-                # Guardar directamente en carpeta de salida
-                cv.imwrite(str(Path(out_dir)/out_name), crop)
+                # Sin modelo YOLO para este recorte, guardar directamente
+                cv.imwrite(str(out_path), crop)
+                if models:
+                    sin_detection_images.append(out_name)
+                    print(f"  -> Recorte {j}: Sin modelo asignado")
             
             saved += 1
-
-        # Si hay modelo YOLO, procesar recortes con detección
-        if yolo_model and crop_paths:
-            has_detection = False
-            all_detections = []
-            
-            for crop_path in crop_paths:
-                detections = detect_objects_yolo(yolo_model, str(crop_path))
-                if detections:
-                    has_detection = True
-                    all_detections.extend(detections)
-            
-            # Procesar cada recorte individualmente
-            for crop_path in crop_paths:
-                # Cargar la imagen del recorte
-                crop_img = cv.imread(str(crop_path))
-                if crop_img is None:
-                    continue
-                
-                # Detectar objetos en este recorte específico
-                crop_detections = detect_objects_yolo(yolo_model, str(crop_path))
-                
-                if crop_detections:
-                    # Dibujar detecciones en la imagen
-                    crop_img_with_boxes = draw_detections(crop_img, crop_detections, yolo_model)
-                    new_path = con_detection_dir / crop_path.name
-                    con_detection_images.append(crop_path.name)
-                    # Guardar imagen con bboxes
-                    cv.imwrite(str(new_path), crop_img_with_boxes)
-                    # Guardar datos de detección para el resumen
-                    detection_data[crop_path.name] = crop_detections
-                else:
-                    # Sin detecciones, mover a carpeta sin_deteccion
-                    new_path = sin_detection_dir / crop_path.name
-                    sin_detection_images.append(crop_path.name)
-                    cv.imwrite(str(new_path), crop_img)
-                
-                # Eliminar archivo temporal
-                crop_path.unlink()
 
         print(f"[{i}/{len(imgs)}] {img_path.name}: {saved} recortes")
 
@@ -307,11 +302,28 @@ def main(in_dir, out_dir, ref_path=None, pad=0, preview=False, scale_view=0.5, w
                 cv.destroyAllWindows()
                 preview = False
     
-    # Generar archivos .txt con listas de imágenes y resumen de detecciones
-    if yolo_model:
+    # Si se usaron modelos YOLO, mover imágenes a carpetas correspondientes y generar archivos
+    if models and any(models):
+        # Mover imágenes a carpetas correspondientes
+        for img_name in con_detection_images:
+            src = Path(out_dir) / img_name
+            dst = con_detection_dir / img_name
+            if src.exists():
+                src.rename(dst)
+        
+        for img_name in sin_detection_images:
+            src = Path(out_dir) / img_name
+            dst = sin_detection_dir / img_name
+            if src.exists():
+                src.rename(dst)
+        
+        # Generar archivos .txt con listas de imágenes
         save_image_list(con_detection_dir, con_detection_images)
         save_image_list(sin_detection_dir, sin_detection_images)
-        save_detection_summary(con_detection_dir, detection_data, yolo_model)
+        
+        # Generar resumen de detecciones
+        save_detection_summary(con_detection_dir, detection_data, models[0] if models else None)
+        
         print(f"Imágenes con detección: {len(con_detection_images)}")
         print(f"Imágenes sin detección: {len(sin_detection_images)}")
         print(f"Resumen detallado guardado en: {con_detection_dir}/resumen_detecciones.txt")
