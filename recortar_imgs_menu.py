@@ -1,151 +1,109 @@
-# recortar_imgs_menu.py
-import tkinter as tk
-from tkinter import filedialog, messagebox
-from pathlib import Path
 import threading
+from pathlib import Path
 
-# Importa tu script existente
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
 import recortar_imgs as core
 
-def run_main(in_dir, out_dir, ref_path, pad, preview, scale_view, yolo_weights, btn):
-    try:
-        btn.config(state="disabled")
-        core.main(in_dir, out_dir, ref_path if ref_path else None, pad, preview, scale_view, yolo_weights)
-        messagebox.showinfo("Listo", "Proceso terminado.")
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
-    finally:
-        btn.config(state="normal")
 
-def select_in():
-    p = filedialog.askdirectory(title="Carpeta de entrada")
-    if p: in_var.set(p)
+EXTS = core.EXTS
 
-def select_out():
-    p = filedialog.askdirectory(title="Carpeta de salida")
-    if p: out_var.set(p)
 
-def select_ref():
-    p = filedialog.askopenfilename(title="Imagen de referencia (opcional)",
-                                   filetypes=[("Imágenes","*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp"), ("Todos","*.*")])
-    if p: ref_var.set(p)
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Recortar imágenes")
+        self.geometry("760x360")
 
-def select_yolo_weight(weight_num):
-    p = filedialog.askopenfilename(title=f"Archivo de pesos YOLO {weight_num} (opcional)",
-                                   filetypes=[("Pesos YOLO","*.pt *.onnx"), ("Todos","*.*")])
-    if p: 
-        yolo_vars[weight_num-1].set(p)
+        self.in_dir_var = tk.StringVar()
+        self.out_dir_var = tk.StringVar()
 
-def start():
-    in_dir  = in_var.get().strip()
-    out_dir = out_var.get().strip()
-    ref_path = ref_var.get().strip()
-    
-    # Recopilar todas las rutas de pesos YOLO
-    yolo_weights = []
-    for i, var in enumerate(yolo_vars):
-        weight_path = var.get().strip()
-        if weight_path:
-            if not Path(weight_path).exists():
-                messagebox.showerror("Error", f"No existe el archivo de pesos {i+1}: {weight_path}")
-                return
-            yolo_weights.append(weight_path)
-        else:
-            yolo_weights.append(None)
-    
-    try:
-        scale = float(scale_var.get())
-        pad   = int(pad_var.get())
-    except:
-        messagebox.showerror("Error", "Escala debe ser float (ej. 0.5) y padding un entero.")
-        return
-    if not in_dir or not out_dir:
-        messagebox.showerror("Faltan datos", "Entrada y salida son obligatorias.")
-        return
-    # Valida existencia
-    if not Path(in_dir).exists():
-        messagebox.showerror("Error", f"No existe: {in_dir}")
-        return
-    
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-    btn_run = btn_start
-    t = threading.Thread(target=run_main, args=(in_dir, out_dir, ref_path, pad, preview_var.get()==1, scale, yolo_weights, btn_run), daemon=True)
-    t.start()
+        self._build_ui()
 
-root = tk.Tk()
-root.title("Recortar Imágenes - Menú")
-root.geometry("1200x800")
+    def _build_ui(self):
+        root = ttk.Frame(self, padding=12)
+        root.pack(fill="both", expand=True)
 
-# Variables principales
-in_var = tk.StringVar()
-out_var = tk.StringVar()
-ref_var = tk.StringVar()
-scale_var = tk.StringVar(value="0.5")
-pad_var = tk.StringVar(value="0")
-preview_var = tk.IntVar(value=0)
+        box = ttk.LabelFrame(root, text="Rutas", padding=10)
+        box.pack(fill="x")
 
-# Variables para los 10 pesos YOLO
-yolo_vars = [tk.StringVar() for _ in range(10)]
+        ttk.Label(box, text="Carpeta de fotos (entrada)").grid(row=0, column=0, sticky="w")
+        ttk.Entry(box, textvariable=self.in_dir_var).grid(row=0, column=1, sticky="we", padx=8)
+        ttk.Button(box, text="Elegir...", command=self._pick_in).grid(row=0, column=2, sticky="e")
 
-# Frame principal con scroll
-canvas = tk.Canvas(root)
-scrollbar = tk.Scrollbar(root, orient="vertical", command=canvas.yview)
-scrollable_frame = tk.Frame(canvas)
+        ttk.Label(box, text="Carpeta de recortes (salida)").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(box, textvariable=self.out_dir_var).grid(row=1, column=1, sticky="we", padx=8, pady=(8, 0))
+        ttk.Button(box, text="Elegir...", command=self._pick_out).grid(row=1, column=2, sticky="e", pady=(8, 0))
 
-scrollable_frame.bind(
-    "<Configure>",
-    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-)
+        box.columnconfigure(1, weight=1)
 
-canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-canvas.configure(yscrollcommand=scrollbar.set)
+        actions = ttk.Frame(root)
+        actions.pack(fill="x", pady=(12, 0))
+        self.btn = ttk.Button(actions, text="Procesar", command=self._run)
+        self.btn.pack(side="left")
 
-# Configuración básica
-row = 0
-tk.Label(scrollable_frame, text="Carpeta de entrada:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(scrollable_frame, textvariable=in_var, width=60).grid(row=row, column=1, padx=4)
-tk.Button(scrollable_frame, text="Seleccionar...", command=select_in).grid(row=row, column=2, padx=4); row+=1
+        self.status = tk.Text(root, height=8, wrap="word")
+        self.status.pack(fill="both", expand=True, pady=(12, 0))
+        self.status.configure(state="disabled")
+        self._log("Selecciona carpeta de entrada y salida, y pulsa Procesar.")
 
-tk.Label(scrollable_frame, text="Carpeta de salida:").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(scrollable_frame, textvariable=out_var, width=60).grid(row=row, column=1, padx=4)
-tk.Button(scrollable_frame, text="Seleccionar...", command=select_out).grid(row=row, column=2, padx=4); row+=1
+    def _log(self, msg: str):
+        self.status.configure(state="normal")
+        self.status.insert("end", msg + "\n")
+        self.status.see("end")
+        self.status.configure(state="disabled")
 
-tk.Label(scrollable_frame, text="Imagen de referencia (opcional):").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(scrollable_frame, textvariable=ref_var, width=60).grid(row=row, column=1, padx=4)
-tk.Button(scrollable_frame, text="Elegir...", command=select_ref).grid(row=row, column=2, padx=4); row+=1
+    def _pick_in(self):
+        p = filedialog.askdirectory(title="Carpeta de entrada")
+        if p:
+            self.in_dir_var.set(p)
 
-# Separador
-tk.Label(scrollable_frame, text="─" * 80, fg="gray").grid(row=row, column=0, columnspan=3, sticky="ew", pady=10); row+=1
+    def _pick_out(self):
+        p = filedialog.askdirectory(title="Carpeta de salida")
+        if p:
+            self.out_dir_var.set(p)
 
-# Título para pesos YOLO
-tk.Label(scrollable_frame, text="Rutas de Pesos YOLO (opcional)", font=("Arial", 12, "bold")).grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=6); row+=1
-tk.Label(scrollable_frame, text="Cada peso se aplicará al recorte correspondiente (1º peso → 1º recorte, 2º peso → 2º recorte, etc.)", 
-         fg="blue").grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=2); row+=1
+    def _validate(self):
+        in_dir = Path(self.in_dir_var.get().strip())
+        out_dir = Path(self.out_dir_var.get().strip())
+        if not in_dir.exists() or not in_dir.is_dir():
+            raise ValueError("Selecciona una carpeta de entrada válida.")
+        if not out_dir:
+            raise ValueError("Selecciona una carpeta de salida válida.")
+        imgs = sorted([p for p in in_dir.iterdir() if p.is_file() and p.suffix.lower() in EXTS])
+        if not imgs:
+            raise ValueError("La carpeta de entrada no contiene imágenes soportadas.")
+        return in_dir, out_dir, len(imgs)
 
-# 10 campos para pesos YOLO
-for i in range(10):
-    tk.Label(scrollable_frame, text=f"Peso YOLO {i+1}:").grid(row=row, column=0, sticky="w", padx=8, pady=4)
-    tk.Entry(scrollable_frame, textvariable=yolo_vars[i], width=60).grid(row=row, column=1, padx=4)
-    tk.Button(scrollable_frame, text="Elegir...", command=lambda num=i+1: select_yolo_weight(num)).grid(row=row, column=2, padx=4); row+=1
+    def _run(self):
+        try:
+            in_dir, out_dir, count = self._validate()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            return
 
-# Separador
-tk.Label(scrollable_frame, text="─" * 80, fg="gray").grid(row=row, column=0, columnspan=3, sticky="ew", pady=10); row+=1
+        self.btn.configure(state="disabled")
+        self._log("")
+        self._log(f"Entrada: {in_dir} ({count} imágenes)")
+        self._log(f"Salida: {out_dir}")
 
-# Configuración adicional
-tk.Label(scrollable_frame, text="Escala de vista (0.1–1.0):").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(scrollable_frame, textvariable=scale_var, width=12).grid(row=row, column=1, sticky="w", padx=4); row+=1
+        def worker():
+            try:
+                written = core.crop_folder(in_dir, out_dir)
+                self.after(0, lambda: self._log(f"Terminado. Recortes guardados: {written}"))
+                self.after(0, lambda: messagebox.showinfo("OK", "Procesamiento terminado."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+            finally:
+                self.after(0, lambda: self.btn.configure(state="normal"))
 
-tk.Label(scrollable_frame, text="Padding (px):").grid(row=row, column=0, sticky="w", padx=8, pady=6)
-tk.Entry(scrollable_frame, textvariable=pad_var, width=12).grid(row=row, column=1, sticky="w", padx=4); row+=1
+        threading.Thread(target=worker, daemon=True).start()
 
-tk.Checkbutton(scrollable_frame, text="Preview", variable=preview_var).grid(row=row, column=1, sticky="w", padx=4); row+=1
 
-# Botón de inicio
-btn_start = tk.Button(scrollable_frame, text="Iniciar", command=start, width=18, font=("Arial", 12, "bold"), bg="#4CAF50", fg="white")
-btn_start.grid(row=row, column=1, pady=20)
+def main(*_args, **_kwargs):
+    App().mainloop()
 
-# Configurar scroll
-canvas.pack(side="left", fill="both", expand=True)
-scrollbar.pack(side="right", fill="y")
 
-root.mainloop()
+if __name__ == "__main__":
+    main()
